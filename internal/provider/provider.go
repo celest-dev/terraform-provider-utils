@@ -5,9 +5,7 @@ import (
 
 	lrauto "cloud.google.com/go/longrunning/autogen"
 	servicemanagement "cloud.google.com/go/servicemanagement/apiv1"
-	"github.com/hashicorp/terraform-plugin-framework-validators/providervalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -80,9 +78,7 @@ func (p *UtilsProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 }
 
 func (p *UtilsProvider) ConfigValidators(ctx context.Context) []provider.ConfigValidator {
-	return []provider.ConfigValidator{
-		providervalidator.Conflicting(path.MatchRoot("credentials"), path.MatchRoot("access_token")),
-	}
+	return []provider.ConfigValidator{}
 }
 
 func (p *UtilsProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
