@@ -20,6 +20,7 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &ServiceRolloutResource{}
+var _ resource.ResourceWithImportState = &ServiceRolloutResource{}
 
 func NewServiceRolloutResource() resource.Resource {
 	return &ServiceRolloutResource{}
@@ -181,6 +182,10 @@ func (r *ServiceRolloutResource) Update(ctx context.Context, req resource.Update
 	data.Id = *rolloutId
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ServiceRolloutResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (r *ServiceRolloutResource) createRollout(ctx context.Context, data ServiceRolloutResourceModel, diagnostics diag.Diagnostics) *basetypes.StringValue {

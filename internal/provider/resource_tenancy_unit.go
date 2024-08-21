@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -20,6 +21,7 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &ServiceTenancyUnitResource{}
+var _ resource.ResourceWithImportState = &ServiceTenancyUnitResource{}
 
 func NewServiceTenancyUnitResource() resource.Resource {
 	return &ServiceTenancyUnitResource{}
@@ -171,6 +173,10 @@ func (r *ServiceTenancyUnitResource) Delete(ctx context.Context, req resource.De
 		resp.Diagnostics.AddError("Error deleting tenancy unit", err.Error())
 		return
 	}
+}
+
+func (r *ServiceTenancyUnitResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (p *UtilsProviderConfig) getTenancyUnit(ctx context.Context, id string) (*serviceconsumermanagement.TenancyUnit, error) {
