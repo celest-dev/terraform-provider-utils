@@ -67,7 +67,7 @@ func (p *UtilsProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"project_id": schema.StringAttribute{
 				MarkdownDescription: "GCP project ID",
-				Required:            true,
+				Optional:            true,
 			},
 			"access_token": schema.StringAttribute{
 				MarkdownDescription: "Optional. GCP access token",
@@ -93,9 +93,12 @@ func (p *UtilsProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	// Resources created here must be alive for the lifetime of the provider.
 	persistentCtx := context.Background()
 
-	dialOpts := []option.ClientOption{
-		option.WithQuotaProject(data.ProjectID.ValueString()),
+	dialOpts := []option.ClientOption{}
+	if !data.ProjectID.IsUnknown() && !data.ProjectID.IsNull() {
+		dialOpts = append(dialOpts, option.WithQuotaProject(data.ProjectID.ValueString()))
 	}
+
+	var foundGoogleCreds bool
 	switch {
 	case !data.AccessToken.IsUnknown() && !data.AccessToken.IsNull():
 		tflog.Info(ctx, "Configuring with access token")
@@ -104,18 +107,23 @@ func (p *UtilsProvider) Configure(ctx context.Context, req provider.ConfigureReq
 				AccessToken: data.AccessToken.ValueString(),
 			}),
 		}))
+		foundGoogleCreds = true
 
 	default:
-		tflog.Info(ctx, "Configuring with default credentials")
-
 		creds, err := googleoauth.FindDefaultCredentialsWithParams(persistentCtx, googleoauth.CredentialsParams{
 			Scopes: scopes,
 		})
-		if err != nil {
-			resp.Diagnostics.AddError("Could not get default credentials", err.Error())
-			return
+		if err == nil {
+			tflog.Info(ctx, "Configuring with default credentials")
+			dialOpts = append(dialOpts, option.WithCredentials(creds))
+			foundGoogleCreds = true
+		} else {
+			tflog.Error(ctx, "Could not find default credentials")
 		}
-		dialOpts = append(dialOpts, option.WithCredentials(creds))
+	}
+
+	if !foundGoogleCreds {
+		return
 	}
 
 	client, err := servicemanagement.NewServiceManagerClient(persistentCtx, dialOpts...)
