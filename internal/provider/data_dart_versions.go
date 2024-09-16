@@ -7,13 +7,15 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"golang.org/x/sync/errgroup"
@@ -22,14 +24,13 @@ import (
 type DartVersionsDataSource struct{}
 
 type DartVersionsDataSourceModel struct {
-	SdkType           types.String `tfsdk:"sdk_type"`
-	MinVersion        types.String `tfsdk:"min_version"`
-	IncludePrerelease types.Bool   `tfsdk:"include_prerelease"`
+	SdkType    types.String `tfsdk:"sdk_type"`
+	MinVersion types.String `tfsdk:"min_version"`
+	Channels   types.List   `tfsdk:"channels"`
 
 	// Computed
-	ID                types.String `tfsdk:"id"`
-	Versions          types.List   `tfsdk:"versions"`
-	ContainerVersions types.List   `tfsdk:"container_versions"`
+	ID       types.String `tfsdk:"id"`
+	Versions types.List   `tfsdk:"versions"`
 }
 
 func NewDartVersionsDataSource() datasource.DataSource {
@@ -58,17 +59,18 @@ func (s *DartVersionsDataSource) Schema(ctx context.Context, req datasource.Sche
 				MarkdownDescription: "The minimum version of the SDK.",
 				Required:            true,
 			},
-			"include_prerelease": schema.BoolAttribute{
-				MarkdownDescription: "Whether to include pre-release versions.",
-				Optional:            true,
+			"channels": schema.ListAttribute{
+				MarkdownDescription: "The list of release channels to include.",
+				ElementType:         basetypes.StringType{},
+				Validators: []validator.List{
+					listvalidator.ValueStringsAre(
+						stringvalidator.OneOf("stable", "beta", "dev"),
+					),
+				},
+				Optional: true,
 			},
 			"versions": schema.ListAttribute{
 				MarkdownDescription: "The list of versions.",
-				Computed:            true,
-				ElementType:         basetypes.StringType{},
-			},
-			"container_versions": schema.ListAttribute{
-				MarkdownDescription: "The list of container versions. This excludes patch versions except for pre-release versions.",
 				Computed:            true,
 				ElementType:         basetypes.StringType{},
 			},
@@ -86,7 +88,19 @@ func (d *DartVersionsDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	channels := []string{"stable", "beta", "dev"}
+	channels := []string{"stable"}
+	if !model.Channels.IsUnknown() && !model.Channels.IsNull() {
+		channelValues, diags := model.Channels.ToListValue(ctx)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(channelValues.ElementsAs(ctx, &channels, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	eg := new(errgroup.Group)
 
 	versionsChan := make(chan []string)
@@ -122,16 +136,10 @@ func (d *DartVersionsDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	minVersion := semver.New(model.MinVersion.ValueString())
-	includePrerelease := model.IncludePrerelease.ValueBool()
-	model.IncludePrerelease = types.BoolValue(includePrerelease)
-
 	versions := make([]*semver.Version, 0, len(versionsSet))
 	for version := range versionsSet {
 		semversion := semver.New(version)
 		if semversion.LessThan(*minVersion) {
-			continue
-		}
-		if semversion.PreRelease != "" && !includePrerelease {
 			continue
 		}
 		versions = append(versions, semversion)
@@ -143,37 +151,12 @@ func (d *DartVersionsDataSource) Read(ctx context.Context, req datasource.ReadRe
 		versionAttrs = append(versionAttrs, types.StringValue(version.String()))
 	}
 
-	containerVersionSet := map[string]struct{}{}
-	for _, version := range versions {
-		if version.PreRelease != "" {
-			containerVersionSet[version.String()] = struct{}{}
-			continue
-		}
-		minorVersion := fmt.Sprintf("%d.%d", version.Major, version.Minor)
-		containerVersionSet[minorVersion] = struct{}{}
-	}
-
-	containerVersions := make([]string, 0, len(containerVersionSet))
-	for version := range containerVersionSet {
-		containerVersions = append(containerVersions, version)
-	}
-	sort.Strings(containerVersions)
-
-	containerVersionAttrs := make([]attr.Value, 0, len(containerVersions))
-	for _, version := range containerVersions {
-		containerVersionAttrs = append(containerVersionAttrs, types.StringValue(version))
-	}
-
 	model.ID = types.StringValue(
 		fmt.Sprintf("%s/%s", model.SdkType.ValueString(), model.MinVersion.ValueString()),
 	)
 	versionsAttr, diags := types.ListValue(basetypes.StringType{}, versionAttrs)
 	resp.Diagnostics.Append(diags...)
 	model.Versions = versionsAttr
-
-	containerVersionsAttr, diags := types.ListValue(basetypes.StringType{}, containerVersionAttrs)
-	resp.Diagnostics.Append(diags...)
-	model.ContainerVersions = containerVersionsAttr
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }

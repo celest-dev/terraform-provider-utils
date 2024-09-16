@@ -22,10 +22,9 @@ A list of Dart SDK versions.
 
 ### Optional
 
-- `include_prerelease` (Boolean) Whether to include pre-release versions.
+- `channels` (List of String) The list of release channels to include.
 
 ### Read-Only
 
-- `container_versions` (List of String) The list of container versions. This excludes patch versions except for pre-release versions.
 - `id` (String) The ID of the config. Format: `{sdkType}/{minVersion}`.
 - `versions` (List of String) The list of versions.
